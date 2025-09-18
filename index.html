@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Visual Simon – Drum Cue (3 Tempos)</title>
+  <style>
+    :root{
+      --accent: #00d1b2; --bg: #0b0f14; --panel: #111821cc; --text: #e9eef4;
+      --muted: #a7b0bb; --danger: #ff6b6b; --ok: #22c55e; --btn: #0e141b; --btnBorder:#283545;
+    }
+    *{box-sizing:border-box;font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji"}
+    html, body {height:100%;margin:0;background: var(--bg);color:var(--text)}
+    .app{position:relative;height:100%;width:100%;overflow:hidden}
+    .stage{ position:absolute; inset:0; background: #000 center/contain no-repeat; filter: saturate(0.98) brightness(0.95); background-image:url('./kit.jpg'); }
+    svg.overlay{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+    .pad{cursor:pointer;pointer-events:auto;fill: transparent; stroke: rgba(255,255,255,0.25); stroke-width:2}
+    .pad-label{fill: #ffffffcc; font-size: 14px; text-shadow: 0 1px 2px rgba(0,0,0,0.6)}
+    .flash{ filter: drop-shadow(0 0 14px var(--accent)); stroke: var(--accent); stroke-width: 6; }
+    .panel{ position:absolute; left:1rem; top:1rem; width: min(430px, 92vw); background: var(--panel); backdrop-filter: blur(10px); border: 1px solid #22303b; border-radius: 16px; padding: 14px; box-shadow: 0 10px 30px rgba(0,0,0,0.35) }
+    .row{display:flex; gap:.6rem; align-items:center; margin:.45rem 0; flex-wrap:wrap}
+    .row label{font-size:.9rem; color:var(--muted); min-width:90px}
+    button{ background:var(--btn); color:var(--text); border:1px solid var(--btnBorder); border-radius:10px; padding:.45rem .6rem; cursor:pointer }
+    button:focus{ outline:2px solid var(--accent); outline-offset:1px }
+    .btn.active{ outline:2px solid var(--accent); }
+    .start{ background: var(--ok); border-color: #1ca34c; color:#03220f; font-weight:600 }
+    .stop{ background: var(--danger); border-color: #d84c4c; color:#2b0707; font-weight:600 }
+    .actions{ display:flex; gap:.5rem }
+    .metro{ position:absolute; right:1rem; top:1rem; width:16px; height:16px; border-radius:50%; background:#213040; transition: transform .1s ease, background .1s ease; border:1px solid #304355 }
+    .metro.pulse{ background: var(--accent); transform: scale(1.3); }
+    .count{ position:absolute; inset:0; display:grid; place-items:center; pointer-events:none; font-weight:800; font-size: clamp(56px, 12vw, 140px); color:#ffffff; text-shadow: 0 10px 40px rgba(0,0,0,0.6), 0 2px 6px rgba(0,0,0,0.8); opacity:0; transition: opacity .15s ease; }
+    .footer{ position:absolute; left:1rem; bottom:1rem; font-size:.8rem; color:var(--muted) }
+    .badge{ display:inline-flex; align-items:center; gap:.35rem; padding:.15rem .5rem; border:1px solid #304355; border-radius:999px }
+  </style>
+</head>
+<body>
+  <div class="app" id="app">
+    <div class="stage" id="stage"></div>
+    <svg class="overlay" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" id="overlay">
+      <g id="pads">
+        <circle class="pad" data-id="0" cx="50" cy="86" r="10"></circle>
+        <circle class="pad" data-id="1" cx="39" cy="60" r="7"></circle>
+        <circle class="pad" data-id="2" cx="48" cy="46" r="6"></circle>
+        <circle class="pad" data-id="3" cx="57" cy="55" r="6"></circle>
+        <circle class="pad" data-id="4" cx="77" cy="63" r="9"></circle>
+        <circle class="pad" data-id="5" cx="83" cy="42" r="10"></circle>
+      </g>
+      <g id="labels">
+        <text class="pad-label" x="47" y="99">Kick</text>
+        <text class="pad-label" x="33" y="72">Snare</text>
+        <text class="pad-label" x="44" y="39">Tom1</text>
+        <text class="pad-label" x="55" y="66">Tom2</text>
+        <text class="pad-label" x="73" y="76">Floor</text>
+        <text class="pad-label" x="79" y="31">Crash</text>
+      </g>
+    </svg>
+    <div class="panel">
+      <div class="row">
+        <label>Tempo</label>
+        <div class="row" style="gap:.4rem">
+          <button class="btn tempo active" data-bpm="50">Slow</button>
+          <button class="btn tempo" data-bpm="80">Mid</button>
+          <button class="btn tempo" data-bpm="100">Fast</button>
+        </div>
+      </div>
+      <div class="row actions">
+        <button id="startBtn" class="start">Start</button>
+        <button id="stopBtn" class="stop">Stop</button>
+      </div>
+      <div style="font-size:.8rem;color:#a7b0bb;margin-top:.35rem">Flow: 4‑beat numeric count‑in (each round) → Show → 1 bar Listen → add 1 note (random 1/4, 1/8, 1/16) up to 2 bars.</div>
+    </div>
+    <div class="metro" id="metroDot" title="Metronome"></div>
+    <div class="count" id="countDisplay"></div>
+    <div class="footer"><span class="badge">Slow / Mid / Fast • Progressive to 2 bars • No pass/fail</span></div>
+  </div>
+  <script>
+    const $=s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s)), rnd=n=>Math.floor(Math.random()*n);
+    const pads = $$('.pad'); function flashPad(id,ms){ const el=pads.find(p=>+p.dataset.id===id); if(!el) return; el.classList.add('flash'); setTimeout(()=>el.classList.remove('flash'), ms); }
+    let running=false, seq=[], totalLen16=0, eventIdx=0, unitsIntoEvent=0, nextTime=0;
+    let bpm=50, unitMs=(60000/bpm)/4;
+    const BAR_BEATS=4, UNITS_PER_BEAT=4, UNITS_PER_BAR=BAR_BEATS*UNITS_PER_BEAT, MAX_UNITS=UNITS_PER_BAR*2;
+    let phase='idle', unitsLeft=0, showUnitsElapsed=0;
+    const controls={tempos:$$('.tempo'), start:$('#startBtn'), stop:$('#stopBtn'), metroDot:$('#metroDot'), count:$('#countDisplay')};
+    controls.tempos.forEach(btn=>btn.addEventListener('click',()=>{controls.tempos.forEach(b=>b.classList.remove('active')); btn.classList.add('active'); bpm=+btn.dataset.bpm; unitMs=(60000/bpm)/4;}));
+    function pickDur16(max){ const c=[4,2,1].filter(d=>d<=max); return c[rnd(c.length)]||1; }
+    function buildInitialSequence(){ totalLen16=0; seq=[]; const d=pickDur16(MAX_UNITS); seq.push({pad:rnd(pads.length), dur16:d}); totalLen16+=d; }
+    function extendSequence(){ const rem=MAX_UNITS-totalLen16; if(rem<=0) return; const d=pickDur16(rem); seq.push({pad:rnd(pads.length), dur16:d}); totalLen16+=d; }
+    function pulseMetro(){ controls.metroDot.classList.add('pulse'); setTimeout(()=>controls.metroDot.classList.remove('pulse'), Math.min(unitMs*2,160)); }
+    function showCount(n){ controls.count.textContent=n; controls.count.style.opacity=1; setTimeout(()=>{controls.count.style.opacity=0.2;}, Math.min(unitMs*3,300)); }
+    function hideCount(){ controls.count.style.opacity=0; controls.count.textContent=''; }
+    function startShow(){ if(running) return; running=true; buildInitialSequence(); phase='countin'; unitsLeft=UNITS_PER_BAR; nextTime=performance.now()+300; eventIdx=0; unitsIntoEvent=0; showUnitsElapsed=0; hideCount(); tick(); }
+    function stopShow(){ running=false; phase='idle'; hideCount(); }
+    function tick(){ if(!running) return; const now=performance.now(); if(now>=nextTime){ if(phase==='countin'){ const beat=(unitsLeft%UNITS_PER_BEAT)===0; if(beat){ const n=(UNITS_PER_BAR-unitsLeft)/UNITS_PER_BEAT+1; pulseMetro(); showCount(n);} unitsLeft--; if(unitsLeft<=0){ hideCount(); phase='show'; eventIdx=0; unitsIntoEvent=0; showUnitsElapsed=0; } } else if(phase==='show'){ if(showUnitsElapsed%UNITS_PER_BEAT===0) pulseMetro(); if(eventIdx<seq.length){ if(unitsIntoEvent===0){ const ev=seq[eventIdx]; const holdMs=Math.max(90, ev.dur16*unitMs*0.7); flashPad(ev.pad, holdMs);} unitsIntoEvent++; const evDur=seq[eventIdx].dur16; if(unitsIntoEvent>=evDur){ eventIdx++; unitsIntoEvent=0; } } else { phase='listen'; unitsLeft=UNITS_PER_BAR; } showUnitsElapsed++; } else if(phase==='listen'){ const beat=(unitsLeft%UNITS_PER_BEAT)===0; if(beat) pulseMetro(); unitsLeft--; if(unitsLeft<=0){ extendSequence(); phase='countin'; unitsLeft=UNITS_PER_BAR; eventIdx=0; unitsIntoEvent=0; showUnitsElapsed=0; } } nextTime+=unitMs; } requestAnimationFrame(tick); }
+    controls.start.addEventListener('click', startShow); controls.stop.addEventListener('click', stopShow);
+    pads.forEach(p=>p.addEventListener('click',()=>flashPad(+p.dataset.id,200)));
+    window.addEventListener('keydown', e=>{ if(e.key===' '){ e.preventDefault(); running? stopShow(): startShow(); } });
+  </script>
+</body>
+</html>
